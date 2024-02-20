@@ -1,0 +1,13 @@
+#include "FixedTime.idl"
+
+module performance_test {
+  module msg {
+    module __plugin__ {
+      typedef char char__256[256];
+      struct FixedHeader {
+        performance_test::msg::__plugin__::FixedTime stamp;
+        char__256 frame_id;
+      };
+    }; // __plugin__
+  }; // msg
+}; // performance_test

@@ -1,0 +1,904 @@
+stages:
+  - bootstrap
+  - build_artifacts
+  - build
+  - test
+  - deploy
+
+Draft MR:
+  stage: bootstrap
+  rules:
+    - if: $CI_MERGE_REQUEST_ID != null && $CI_MERGE_REQUEST_TITLE =~ /^Draft:/
+      when: always
+  script:
+    - echo "To suppress this failing job, remove 'Draft:' from the MR title"
+    - exit 1
+
+workflow:
+  rules:
+    - if: $CI_MERGE_REQUEST_ID != null && $CI_MERGE_REQUEST_TITLE !~ /^Draft:/
+      when: always
+
+build_cyclonedds_library:
+  rules:
+    - if: $BUILD_CYCLONEDDS_LIBRARY == "true"
+      when: always
+    - when: never
+  stage: build_artifacts
+  image: osrf/ros:rolling-desktop
+  script:
+    - source /opt/ros/rolling/setup.bash
+    - apt-get update
+   
+    - '
+      curl "https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-iceoryx-v2.0.0.tar.gz" > opt-iceoryx-v2.0.0.tar.gz
+      '
+    - tar -xzf opt-iceoryx-v2.0.0.tar.gz -C /
+    - source /opt/iceoryx/setup.bash
+
+    - git clone https://github.com/eclipse-cyclonedds/cyclonedds.git -b 0.9.0b1 --depth 1
+    - cd cyclonedds
+    - mkdir -p build
+    - cd build
+    - cmake -DCMAKE_INSTALL_PREFIX=/opt/cyclonedds -DENABLE_SECURITY=ON -DENABLE_SHM=ON ..
+    - cmake --build .
+    - cmake --build . --target install
+    
+    - tar cfz opt-cyclonedds-v0.9.0b1.tar.gz /opt/cyclonedds
+    - '
+      curl 
+          --header "JOB-TOKEN: ${CI_JOB_TOKEN}"
+          --upload-file opt-cyclonedds-v0.9.0b1.tar.gz
+"https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-cyclonedds-v0.9.0b1.tar.gz"
+      '
+  artifacts:
+    expire_in: 1 day
+    when: always
+    paths:
+      - opt-cyclonedds-v0.9.0b1.tar.gz
+
+build_cyclonedds_cxx_libary:
+  rules:
+    - if: $BUILD_CYCLONEDDS_CXX_LIBRARY == "true"
+      when: always
+    - when: never
+  stage: build_artifacts
+  image: osrf/ros:rolling-desktop
+  script:
+    - source /opt/ros/rolling/setup.bash
+    - apt-get update
+
+    - '
+      curl "https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-iceoryx-v2.0.0.tar.gz" > opt-iceoryx-v2.0.0.tar.gz
+      '
+    - tar -xzf opt-iceoryx-v2.0.0.tar.gz -C /
+    - source /opt/iceoryx/setup.bash
+
+    - 'curl "https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-cyclonedds-v0.9.0b1.tar.gz" > opt-cyclonedds-v0.9.0b1.tar.gz
+      '
+    - tar -xzf opt-cyclonedds-v0.9.0b1.tar.gz -C /
+    
+    - git clone https://github.com/eclipse-cyclonedds/cyclonedds-cxx.git -b 0.9.0b1 --depth 1
+    - cd cyclonedds-cxx
+    - mkdir -p build
+    - cd build
+    - '
+      cmake -DCMAKE_INSTALL_PREFIX=/opt/cyclonedds-cxx
+            -DCMAKE_PREFIX_PATH=/opt/cyclonedds
+            -DENABLE_SHM=ON
+            ..
+      '
+    - cmake --build .
+    - cmake --build . --target install
+    - tar cfz opt-cyclonedds-cxx-v0.9.0b1.tar.gz /opt/cyclonedds-cxx
+    - '
+      curl 
+          --header "JOB-TOKEN: ${CI_JOB_TOKEN}"
+          --upload-file opt-cyclonedds-cxx-v0.9.0b1.tar.gz
+"https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-cyclonedds-cxx-v0.9.0b1.tar.gz"
+      '
+  artifacts:
+    expire_in: 1 day
+    when: always
+    paths:
+      - opt-cyclonedds-cxx-v0.9.0b1.tar.gz
+
+build_iceoryx_library:
+  rules:
+    - if: $BUILD_ICEORYX_LIBRARY == "true"
+      when: always
+    - when: never
+  stage: build_artifacts
+  image: osrf/ros:rolling-desktop
+  script:
+    - source /opt/ros/rolling/setup.bash
+    - apt-get update
+    - apt-get install -y libacl1-dev
+
+    - mkdir -p /iceoryx_ws/src
+    - cd /iceoryx_ws/src/
+    - git clone https://github.com/eclipse-iceoryx/iceoryx.git -b v2.0.0 --depth 1
+    - rosdep install --from-paths iceoryx --ignore-src -y
+    - cd /iceoryx_ws
+    - '
+      colcon build
+          --install-base /opt/iceoryx
+          --cmake-args
+            -DIOX_MAX_PUBLISHERS=32
+            -DIOX_MAX_SUBSCRIBERS=32
+            -DIOX_MAX_CHUNKS_HELD_PER_SUBSCRIBER_SIMULTANEOUSLY=1000
+      '
+    - source /opt/iceoryx/setup.bash
+    - tar cfz opt-iceoryx-v2.0.0.tar.gz /opt/iceoryx
+    - '
+      curl 
+          --header "JOB-TOKEN: ${CI_JOB_TOKEN}"
+          --upload-file opt-iceoryx-v2.0.0.tar.gz
+"https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-iceoryx-v2.0.0.tar.gz"
+      '
+  artifacts:
+    expire_in: 1 day
+    when: always
+    paths:
+      - opt-iceoryx-v2.0.0.tar.gz
+
+build_opendds_library:
+  rules:
+    - if: $BUILD_OPENDDS_LIBRARY == "true"
+      when: always
+    - when: never
+  stage: build_artifacts
+  image: osrf/ros:rolling-desktop
+  script:
+    - source /opt/ros/rolling/setup.bash
+    - apt-get update
+
+    - mkdir -p /opendds/src
+    - cd /opendds/src/
+    - git clone https://github.com/objectcomputing/OpenDDS.git -b DDS-3.13.2 --depth 1
+    - cd OpenDDS
+    - ./configure --no-debug --optimize --no-tests --prefix=/opt/opendds
+    - make -j$(nproc)
+    - make install
+
+    - tar cfz opt-opendds-3.13.2.tar.gz /opt/opendds
+    - '
+      curl 
+          --header "JOB-TOKEN: ${CI_JOB_TOKEN}"
+          --upload-file opt-opendds-3.13.2.tar.gz
+"https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-opendds-3.13.2.tar.gz"
+      '
+  artifacts:
+    expire_in: 1 day
+    when: always
+    paths:
+      - opt-opendds-3.13.2.tar.gz
+
+
+build_fastrtps_library:
+  rules:
+    - if: $BUILD_FASTRTPS_LIBRARY == "true"
+      when: always
+    - when: never
+  stage: build_artifacts
+  image: osrf/ros:rolling-desktop
+  script:
+    - source /opt/ros/rolling/setup.bash
+    - apt-get update
+    - apt-get install -y default-jdk cmake g++ python3-pip wget git libasio-dev libtinyxml2-dev libssl-dev libp11-dev libengine-pkcs11-openssl
+    - rosdep update
+    - apt remove -y ros-rolling-fastrtps
+    - mkdir -p Fast-DDS
+    - cd Fast-DDS
+    - git clone https://github.com/eProsima/foonathan_memory_vendor.git -b v1.2.1
+    - mkdir foonathan_memory_vendor/build
+    - cd foonathan_memory_vendor/build && \
+    - cmake .. -DCMAKE_INSTALL_PREFIX=/opt/Fast-DDS -DBUILD_SHARED_LIBS=ON
+    - cmake --build . --target install
+
+    - cd ../../
+    - git clone https://github.com/eProsima/Fast-CDR.git -b v1.0.24
+    - mkdir Fast-CDR/build
+    - cd Fast-CDR/build
+    - cmake .. -DCMAKE_INSTALL_PREFIX=/opt/Fast-DDS -DCMAKE_PREFIX_PATH=/opt/Fast-DDS
+    - cmake --build . --target install
+
+    - cd ../../
+    - git clone https://github.com/eProsima/Fast-DDS.git -b v2.6.0
+    - mkdir Fast-DDS/build
+    - cd Fast-DDS/build
+    - cmake .. -DCMAKE_INSTALL_PREFIX=/opt/Fast-DDS -DCMAKE_PREFIX_PATH=/opt/Fast-DDS
+    - cmake --build . --target install
+    - tar cfz opt-fastdds-v1.2.1.tar.gz /opt/Fast-DDS
+    - '
+      curl 
+          --header "JOB-TOKEN: ${CI_JOB_TOKEN}"
+          --upload-file opt-fastdds-v1.2.1.tar.gz
+"https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-fastdds-v1.2.1.tar.gz"
+      '
+  artifacts:
+    expire_in: 1 day
+    when: always
+    paths:
+      - opt-fastdds-v1.2.1.tar.gz
+
+build_cross_image:
+  stage: build
+  image: docker
+  services:
+    - docker:dind
+  script:
+    - '
+      docker build
+          --build-arg PERFORMANCE_TEST_DOCKER_ARCH=arm64v8
+          --build-arg PERFORMANCE_TEST_TARGET_ARCH=aarch64
+          -t performance_test_cross
+          -f tools/Dockerimage.crossbuild
+          .
+      '
+    - '
+      docker run -t -v `pwd`:`pwd` -w `pwd`
+          --rm performance_test_cross
+          sh -c "colcon build --merge-install --cmake-args
+              -DCMAKE_TOOLCHAIN_FILE=`pwd`/tools/toolchain.cmake
+              -DBUILD_TESTING=OFF
+              -DPERFORMANCE_TEST_MINIMAL_MESSAGES=ON"
+      '
+
+.build_rclcpp:
+  stage: build
+  image: osrf/ros:rolling-desktop
+  script:
+    - '
+      colcon build
+          --install-base /opt/performance_test
+          --merge-install
+          --cmake-args
+            -DCMAKE_BUILD_TYPE=Release
+            -DPERFORMANCE_TEST_MINIMAL_MESSAGES=ON
+      '
+    - cp LICENSE /opt/performance_test
+    - tar cfz opt.tar.gz /opt/performance_test
+  artifacts:
+    expire_in: 1 day
+    when: always
+    paths:
+      - log
+      - build
+      - opt.tar.gz
+
+
+build_rclcpp_humble:
+  extends:
+    - .build_rclcpp
+  image: osrf/ros:humble-desktop
+
+build_rclcpp_rolling:
+  extends:
+    - .build_rclcpp
+    
+build_rclcpp_galactic:
+  extends:
+    - .build_rclcpp
+  image: osrf/ros:galactic-desktop
+
+build_rclcpp_foxy:
+  extends:
+    - .build_rclcpp
+  image: osrf/ros:foxy-desktop
+
+build_rclcpp_eloquent:
+  extends:
+    - .build_rclcpp
+  image: osrf/ros:eloquent-desktop
+
+build_rclcpp_dashing:
+  extends:
+    - .build_rclcpp
+  image: osrf/ros:dashing-desktop
+
+build_cyclonedds:
+  stage: build
+  image: osrf/ros:rolling-desktop
+  script:
+    - source /opt/ros/rolling/setup.bash
+    - apt-get update
+
+    - rosdep update
+    - rosdep install --from-paths performance_test --ignore-src -y
+
+    - '
+      curl "https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-iceoryx-v2.0.0.tar.gz" > opt-iceoryx-v2.0.0.tar.gz
+      '
+    - tar -xzf opt-iceoryx-v2.0.0.tar.gz -C /
+    - find /opt/iceoryx/
+    - source /opt/iceoryx/setup.bash
+
+    - '
+      curl "https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-cyclonedds-v0.9.0b1.tar.gz" > opt-cyclonedds-v0.9.0b1.tar.gz
+      '
+    - tar -xzf opt-cyclonedds-v0.9.0b1.tar.gz -C /
+    - find /opt/cyclonedds/
+
+    - cd $CI_PROJECT_DIR
+    - '
+      colcon build
+          --install-base /opt/performance_test
+          --merge-install
+          --cmake-args
+            -DCMAKE_BUILD_TYPE=Release
+            -DPERFORMANCE_TEST_CYCLONEDDS_ENABLED=ON
+            -DPERFORMANCE_TEST_RCLCPP_ENABLED=OFF
+          --base-path performance_test
+      '
+    
+    - cp LICENSE /opt/performance_test
+    - tar cfz opt.tar.gz /opt/performance_test
+  artifacts:
+    expire_in: 1 day
+    when: always
+    paths:
+      - log
+      - build
+      - opt.tar.gz
+
+build_cyclonedds_cxx:
+  stage: build
+  image: osrf/ros:rolling-desktop
+  script:
+    - source /opt/ros/rolling/setup.bash
+    - apt-get update
+
+    - rosdep update
+    - rosdep install --from-paths performance_test --ignore-src -y
+
+    - '
+      curl "https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-iceoryx-v2.0.0.tar.gz" > opt-iceoryx-v2.0.0.tar.gz
+      '
+    - tar -xzf opt-iceoryx-v2.0.0.tar.gz -C /
+    - find /opt/iceoryx/
+    - source /opt/iceoryx/setup.bash
+
+    - '
+      curl "https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-cyclonedds-v0.9.0b1.tar.gz" > opt-cyclonedds-v0.9.0b1.tar.gz
+      '
+    - tar -xzf opt-cyclonedds-v0.9.0b1.tar.gz -C /
+    - find /opt/cyclonedds/
+
+    - '
+      curl "https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-cyclonedds-cxx-v0.9.0b1.tar.gz" > opt-cyclonedds-cxx-v0.9.0b1.tar.gz
+        '
+    - tar -xzf opt-cyclonedds-cxx-v0.9.0b1.tar.gz -C /
+    - find /opt/cyclonedds-cxx/
+
+    - cd $CI_PROJECT_DIR
+    - '
+      colcon build
+          --install-base /opt/performance_test
+          --merge-install
+          --cmake-args
+            -DCMAKE_BUILD_TYPE=Release
+            -DPERFORMANCE_TEST_CYCLONEDDS_CXX_ENABLED=ON
+            -DPERFORMANCE_TEST_RCLCPP_ENABLED=OFF
+          --base-path performance_test
+      '
+    
+    - cp LICENSE /opt/performance_test
+    - tar cfz opt.tar.gz /opt/performance_test
+  artifacts:
+    expire_in: 1 day
+    when: always
+    paths:
+      - log
+      - build
+      - opt.tar.gz
+
+build_iceoryx:
+  stage: build
+  image: osrf/ros:rolling-desktop
+  script:
+    - source /opt/ros/rolling/setup.bash
+    - apt-get update
+
+    - '
+      curl "https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-iceoryx-v2.0.0.tar.gz" > opt-iceoryx-v2.0.0.tar.gz
+      '
+    - tar -xzf opt-iceoryx-v2.0.0.tar.gz -C /
+    - find /opt/iceoryx/
+    - source /opt/iceoryx/setup.bash
+
+    - cd $CI_PROJECT_DIR
+    - '
+      colcon build
+          --install-base /opt/performance_test
+          --merge-install
+          --cmake-args
+            -DCMAKE_BUILD_TYPE=Release
+            -DPERFORMANCE_TEST_ICEORYX_ENABLED=ON
+            -DPERFORMANCE_TEST_MINIMAL_MESSAGES=ON
+          --base-path performance_test
+      '
+    - cp LICENSE /opt/performance_test
+    - tar cfz opt.tar.gz /opt/performance_test
+  artifacts:
+    expire_in: 1 day
+    when: always
+    paths:
+      - log
+      - build
+      - opt.tar.gz
+
+build_opendds:
+  stage: build
+  image: osrf/ros:rolling-desktop
+  script:
+    - source /opt/ros/rolling/setup.bash
+    - apt-get update
+
+    - rosdep update
+    - rosdep install --from-paths performance_test --ignore-src -y
+    - '
+      curl "https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-opendds-3.13.2.tar.gz" > opt-opendds-3.13.2.tar.gz
+      '
+    - tar -xzf opt-opendds-3.13.2.tar.gz -C /
+    - find /opt/opendds
+    - cd $CI_PROJECT_DIR
+    - mkdir -p /opt/performance_test
+    - '
+      colcon build
+          --install-base /opt/performance_test
+          --merge-install
+          --cmake-args
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_CXX_FLAGS="-w"
+            -DPERFORMANCE_TEST_OPENDDS_ENABLED=ON
+            -DPERFORMANCE_TEST_RCLCPP_ENABLED=OFF
+          --base-path performance_test
+      '
+    - cp LICENSE /opt/performance_test
+    - tar cfz opt.tar.gz /opt/performance_test
+  artifacts:
+    expire_in: 1 day
+    when: always
+    paths:
+    - log
+    - build
+    - opt.tar.gz
+
+build_fastrtps:
+  stage: build
+  image: osrf/ros:rolling-desktop
+  script:
+    - source /opt/ros/rolling/setup.bash
+    - apt-get update
+
+    - rosdep update
+    - rosdep install --from-paths performance_test --ignore-src -y
+    - apt remove -y ros-rolling-fastrtps
+    - '
+      curl "https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-fastdds-v1.2.1.tar.gz" > opt-fastdds-v1.2.1.tar.gz
+      '
+    - tar -xzf opt-fastdds-v1.2.1.tar.gz -C /
+    - find /opt/Fast-DDS
+    - cd $CI_PROJECT_DIR
+    - '
+      colcon build
+          --install-base /opt/performance_test
+          --merge-install
+          --cmake-args
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_PREFIX_PATH=/opt/Fast-DDS
+            -DPERFORMANCE_TEST_FASTRTPS_ENABLED=ON
+            -DPERFORMANCE_TEST_RCLCPP_ENABLED=OFF
+      '
+    - cp LICENSE /opt/performance_test
+    - tar cfz opt.tar.gz /opt/performance_test
+  artifacts:
+    expire_in: 1 day
+    when: always
+    paths:
+      - log
+      - build
+      - opt.tar.gz
+
+build_ros1:
+  stage: build
+  image: osrf/ros:melodic-desktop
+  script:
+    - source /opt/ros/melodic/setup.bash
+    - apt-get update
+    - apt-get install -y python3-colcon-common-extensions
+    - touch performance_test/COLCON_IGNORE  # Don't build the ROS2 package
+    - rm performance_test_ros1_msgs/COLCON_IGNORE  # ROS1 packages are ignored by default
+    - rm performance_test_ros1_publisher/COLCON_IGNORE  # ROS1 packages are ignored by default
+    - colcon build  # Should build msgs and publisher
+
+test:
+  stage: test
+  image: osrf/ros:rolling-desktop
+  needs:
+    - build_rclcpp_rolling
+  script:
+    - apt-get update
+    - sudo apt-get install -y python3-pip
+    - rosdep update --include-eol-distros
+    - rosdep install --from-paths performance_test performance_report --ignore-src -y
+    - tar xf opt.tar.gz -C /
+    - '
+      colcon test
+          --install-base /opt/performance_test
+          --merge-install
+      '
+    - 'colcon test-result --verbose'
+  artifacts:
+    expire_in: 1 day
+    when: always
+    paths:
+      - log
+
+test_performance_report:
+  stage: test
+  image: osrf/ros:rolling-desktop
+  needs:
+    - build_rclcpp_rolling
+  script:
+    - apt-get update
+    - sudo apt-get install -y python3-pip 
+    - python3 -m pip install bokeh selenium pandas
+    - rosdep update --include-eol-distros
+    - rosdep install --from-paths performance_test --ignore-src -y
+    - tar -xzf opt.tar.gz -C /
+    - source /opt/performance_test/setup.bash
+    # Using runnner to test performance_report
+    - '
+      ros2 run performance_report runner
+      --log-dir perf_logs
+      --test-name experiments
+      --configs performance_report/cfg/runner/run_one_experiment.yaml
+      '
+    - '
+      ros2 run performance_report reporter
+      --log-dir perf_logs
+      --configs performance_report/cfg/reporter/report_one_experiment.yaml
+      '
+    # Verfying the generated report files from reporter
+    - find ./perf_logs/time_vs_latency.html
+    # Using commander to test performance_report
+    - '
+      ros2 run performance_report commander --log-dir perf_logs_commander   --test-name experiments   
+      --configs performance_report/cfg/runner/run_one_experiment.yaml > commands.sh
+      '
+    - chmod +x commands.sh
+    - ./commands.sh
+    - '
+      ros2 run performance_report reporter
+      --log-dir perf_logs_commander
+      --configs performance_report/cfg/reporter/report_one_experiment.yaml
+      '
+    # Verfying the generated report files form reporter
+    - find ./perf_logs_commander/time_vs_latency.html
+
+.smoke_test:
+  stage: test
+  image: osrf/ros:rolling-desktop
+  script:
+    - apt-get update
+    - rosdep update --include-eol-distros
+    - rosdep install --from-paths performance_test --ignore-src -y
+    - 'if [[ -n "${SMOKE_TEST_BEFORE_SCRIPT}" ]]; then eval "${SMOKE_TEST_BEFORE_SCRIPT}"; fi'
+    - tar -xzf opt.tar.gz -C /
+    - source /opt/performance_test/setup.bash
+    - '
+      MSGS=${SMOKE_TEST_TOPICS:-Array16k};
+      for MSG in ${MSGS}; do
+        /opt/performance_test/lib/performance_test/perf_test
+            -c ${COMMUNICATION_MEAN}
+            --msg ${MSG}
+            --topic test_topic
+            --rate 2
+            --history KEEP_LAST
+            --history-depth 10
+            --max-runtime 15;
+      done;
+      '
+
+smoke_test_rclcpp_ste_rolling:
+  extends:
+    - .smoke_test
+  needs:
+    - build_rclcpp_rolling
+  variables:
+    COMMUNICATION_MEAN: rclcpp-single-threaded-executor
+    ROS_DOMAIN_ID: 10
+
+smoke_test_rclcpp_ste_humble:
+  extends:
+    - .smoke_test
+  image: osrf/ros:humble-desktop
+  needs:
+    - build_rclcpp_humble
+  variables:
+    COMMUNICATION_MEAN: rclcpp-single-threaded-executor
+    ROS_DOMAIN_ID: 11
+
+smoke_test_rclcpp_ste_galactic:
+  extends:
+    - .smoke_test
+  image: osrf/ros:galactic-desktop
+  needs:
+    - build_rclcpp_galactic
+  variables:
+    COMMUNICATION_MEAN: rclcpp-single-threaded-executor
+    ROS_DOMAIN_ID: 12
+
+smoke_test_rclcpp_ste_foxy:
+  extends:
+    - .smoke_test
+  image: osrf/ros:foxy-desktop
+  needs:
+    - build_rclcpp_foxy
+  variables:
+    COMMUNICATION_MEAN: rclcpp-single-threaded-executor
+    ROS_DOMAIN_ID: 13
+
+smoke_test_rclcpp_ste_eloquent:
+  extends:
+    - .smoke_test
+  image: osrf/ros:eloquent-desktop
+  needs:
+    - build_rclcpp_eloquent
+  variables:
+    COMMUNICATION_MEAN: rclcpp-single-threaded-executor
+    ROS_DOMAIN_ID: 14
+
+smoke_test_rclcpp_ste_dashing:
+  extends:
+    - .smoke_test
+  image: osrf/ros:dashing-desktop
+  needs:
+    - build_rclcpp_dashing
+  variables:
+    COMMUNICATION_MEAN: rclcpp-single-threaded-executor
+    ROS_DOMAIN_ID: 15
+
+smoke_test_rclcpp_sste_rolling:
+  extends:
+    - .smoke_test
+  needs:
+    - build_rclcpp_rolling
+  variables:
+    COMMUNICATION_MEAN: rclcpp-static-single-threaded-executor
+    ROS_DOMAIN_ID: 20
+
+smoke_test_rclcpp_sste_humble:
+  extends:
+    - .smoke_test
+  image: osrf/ros:humble-desktop
+  needs:
+    - build_rclcpp_humble
+  variables:
+    COMMUNICATION_MEAN: rclcpp-static-single-threaded-executor
+    ROS_DOMAIN_ID: 21
+
+smoke_test_rclcpp_sste_galactic:
+  extends:
+    - .smoke_test
+  image: osrf/ros:galactic-desktop
+  needs:
+    - build_rclcpp_galactic
+  variables:
+    COMMUNICATION_MEAN: rclcpp-static-single-threaded-executor
+    ROS_DOMAIN_ID: 22
+
+smoke_test_rclcpp_waitset_rolling:
+  extends:
+    - .smoke_test
+  needs:
+    - build_rclcpp_rolling
+  variables:
+    COMMUNICATION_MEAN: rclcpp-waitset
+    ROS_DOMAIN_ID: 30
+
+smoke_test_rclcpp_waitset_humble:
+  extends:
+    - .smoke_test
+  image: osrf/ros:humble-desktop
+  needs:
+    - build_rclcpp_humble
+  variables:
+    COMMUNICATION_MEAN: rclcpp-waitset
+    ROS_DOMAIN_ID: 31
+
+smoke_test_rclcpp_waitset_galactic:
+  extends:
+    - .smoke_test
+  image: osrf/ros:galactic-desktop
+  needs:
+    - build_rclcpp_galactic
+  variables:
+    COMMUNICATION_MEAN: rclcpp-waitset
+    ROS_DOMAIN_ID: 32
+
+smoke_test_rclcpp_waitset_foxy:
+  extends:
+    - .smoke_test
+  image: osrf/ros:foxy-desktop
+  needs:
+    - build_rclcpp_foxy
+  variables:
+    COMMUNICATION_MEAN: rclcpp-waitset
+    ROS_DOMAIN_ID: 33
+
+smoke_test_fastrtps:
+  extends:
+    - .smoke_test
+  needs:
+    - build_fastrtps
+  variables:
+    COMMUNICATION_MEAN: FastRTPS
+    SMOKE_TEST_BEFORE_SCRIPT: '
+        curl  "https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-fastdds-v1.2.1.tar.gz" > opt-fastdds-v1.2.1.tar.gz;
+        tar -xzf opt-fastdds-v1.2.1.tar.gz -C /;
+        LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/opt/Fast-DDS/lib";
+    '
+
+smoke_test_cyclonedds:
+  extends:
+    - .smoke_test
+  needs:
+    - build_cyclonedds
+  variables:
+    COMMUNICATION_MEAN: CycloneDDS
+    SMOKE_TEST_BEFORE_SCRIPT: '
+        curl  "https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-iceoryx-v2.0.0.tar.gz" > opt-iceoryx-v2.0.0.tar.gz;
+        tar -xzf opt-iceoryx-v2.0.0.tar.gz -C /;
+        curl  "https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-cyclonedds-v0.9.0b1.tar.gz" > opt-cyclonedds-v0.9.0b1.tar.gz;
+        tar -xzf opt-cyclonedds-v0.9.0b1.tar.gz -C /;
+        source /opt/iceoryx/setup.bash;
+        LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/opt/cyclonedds/lib";
+    '
+
+smoke_test_cyclonedds_cxx:
+  image: osrf/ros:rolling-desktop
+  extends:
+    - .smoke_test
+  needs:
+    - build_cyclonedds_cxx
+  variables:
+    COMMUNICATION_MEAN: CycloneDDS-CXX
+    SMOKE_TEST_BEFORE_SCRIPT: '
+        curl  "https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-iceoryx-v2.0.0.tar.gz" > opt-iceoryx-v2.0.0.tar.gz;
+        tar -xzf opt-iceoryx-v2.0.0.tar.gz -C /;
+        curl  "https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-cyclonedds-v0.9.0b1.tar.gz" > opt-cyclonedds-v0.9.0b1.tar.gz;
+        tar -xzf opt-cyclonedds-v0.9.0b1.tar.gz -C /;
+        curl  "https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-cyclonedds-cxx-v0.9.0b1.tar.gz" > opt-cyclonedds-cxx-v0.9.0b1.tar.gz;
+        tar -xzf opt-cyclonedds-cxx-v0.9.0b1.tar.gz -C /;
+        source /opt/iceoryx/setup.bash;
+        LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/opt/cyclonedds/lib:/opt/cyclonedds-cxx/lib";
+    '
+
+smoke_test_iceoryx:
+  extends:
+    - .smoke_test
+  needs:
+    - build_iceoryx
+  variables:
+    COMMUNICATION_MEAN: iceoryx
+    SMOKE_TEST_BEFORE_SCRIPT: '
+        curl  "https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-iceoryx-v2.0.0.tar.gz" > opt-iceoryx-v2.0.0.tar.gz;
+        tar -xzf opt-iceoryx-v2.0.0.tar.gz -C /;
+        source /opt/iceoryx/setup.bash;
+        mkdir -p /etc/iceoryx;
+        printf "[general]\nversion = 1\n\n[[segment]]\n\n[[segment.mempool]]\nsize = 128\ncount = 1000\n\n[[segment.mempool]]\nsize = 1024\ncount = 1000\n\n[[segment.mempool]]\nsize = 16384\ncount = 100\n\n[[segment.mempool]]\nsize = 131072\ncount = 10" > /etc/iceoryx/roudi_config.toml;
+        iox-roudi -c /etc/iceoryx/roudi_config.toml &
+    '
+
+smoke_test_opendds:
+  extends:
+    - .smoke_test
+  needs:
+    - build_opendds
+  variables:
+    COMMUNICATION_MEAN: OpenDDS
+    SMOKE_TEST_BEFORE_SCRIPT: '
+        curl  "https://gitlab.com/api/v4/projects/14953417/packages/generic/performance_test/1.0.0/opt-opendds-3.13.2.tar.gz" > opt-opendds-3.13.2.tar.gz;
+        tar -xzf opt-opendds-3.13.2.tar.gz -C /;
+    '
+
+test_plotter:
+  stage: test
+  image: osrf/ros:rolling-desktop
+  script:
+    - cd performance_test/helper_scripts/apex_performance_plotter
+    - apt-get update
+    - apt-get install -y python3-pip
+    - pip3 install .
+    - perfplot --help
+
+test_security_fast_dds:
+  stage: test
+  image: osrf/ros:rolling-desktop
+  needs:
+    - build_rclcpp_rolling
+  variables:
+    ROS_DOMAIN_ID: 40
+  script:
+    - apt-get update
+    - rosdep update
+    - rosdep install --from-paths performance_test --ignore-src -y
+    - tar -xzf opt.tar.gz -C /
+    - source /opt/performance_test/setup.bash
+    # Enable security
+    - cd performance_test/helper_scripts
+    - source security_setup.bash enable ./demo_keys
+    - export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+    # The below runs should fail:
+    # Unexpected node names:
+    - '! ros2 run performance_test perf_test -c rclcpp-single-threaded-executor --msg Array1k -t Array1k --max-runtime 10 --rate 2 --history KEEP_LAST --history-depth 10'
+    # Unexpected msg types
+    - '! ros2 run performance_test perf_test -c rclcpp-single-threaded-executor --msg Struct16 -t test_topic --max-runtime 10 --rate 2 --history KEEP_LAST --history-depth 10 --with-security -- --ros-args -e /performance_test'
+    # This should pass (time-out)
+    - 'timeout 30 ros2 run performance_test perf_test -c rclcpp-single-threaded-executor --msg Array16k -t Array16k --rate 2 --history KEEP_LAST --history-depth 10 --with-security -- --ros-args -e /performance_test ||
+       if [ $? -eq 124 ]; then echo "OK";
+       else exit 1;
+       fi
+      '
+
+test_security_cyclone_dds:
+  stage: test
+  image: osrf/ros:rolling-desktop
+  needs:
+    - build_rclcpp_rolling
+  variables:
+    ROS_DOMAIN_ID: 41
+  script:
+    - apt-get update
+    - apt-get install -y ros-rolling-rmw-cyclonedds-cpp
+    - rosdep update
+    - rosdep install --from-paths performance_test --ignore-src -y
+    - tar -xzf opt.tar.gz -C /
+    - source /opt/performance_test/setup.bash
+    # Enable security
+    - cd performance_test/helper_scripts
+    - source security_setup.bash enable ./demo_keys
+    # The below runs should fail:
+    # Unexpected node names:
+    - '! ros2 run performance_test perf_test -c rclcpp-single-threaded-executor --msg Array1k -t Array1k --max-runtime 10 --rate 2 --history KEEP_LAST --history-depth 10'
+    # Unexpected msg types
+    - '! ros2 run performance_test perf_test -c rclcpp-single-threaded-executor --msg Struct16 -t test_topic --max-runtime 10 --rate 2 --history KEEP_LAST --history-depth 10 --with-security -- --ros-args -e /performance_test'
+    # This should pass (time-out)
+    - 'timeout 30 ros2 run performance_test perf_test -c rclcpp-single-threaded-executor --msg Array16k -t Array16k --rate 2 --history KEEP_LAST --history-depth 10 --with-security -- --ros-args -e /performance_test ||
+       if [ $? -eq 124 ]; then echo "OK";
+       else exit 1;
+       fi
+      '
+
+volume:
+  stage: deploy
+  image: docker
+  services:
+    - docker:dind
+  needs:
+    - build_rclcpp_rolling
+  before_script:
+    - ''
+  script:
+    - 'echo -e "*\n!opt.tar.gz" > .dockerignore'
+    - |
+      cat >Dockerfile <<EOF
+      FROM alpine
+      ADD opt.tar.gz /
+      VOLUME /opt/performance_test
+      CMD ["/bin/sh", "-c", "trap 'exit 147' TERM; tail -f /dev/null & wait ${!}"]
+      EOF
+    - '
+      docker build
+          --label ade_image_commit_sha="$CI_COMMIT_SHA"
+          --label ade_image_commit_tag="$CI_COMMIT_TAG"
+          -t image .
+      '
+    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
+    - docker tag image $CI_REGISTRY_IMAGE:commit-$CI_COMMIT_SHA
+    - docker tag image $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+    - docker push $CI_REGISTRY_IMAGE:commit-$CI_COMMIT_SHA
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
